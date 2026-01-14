@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinic Dashboard - AI Receptionist</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .filters {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .filters label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .filters input, .filters select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-confirmed {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 5px;
+            transition: opacity 0.2s;
+        }
+        
+        .btn:hover {
+            opacity: 0.8;
+        }
+        
+        .btn-complete {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-cancel {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .refresh-info {
+            text-align: right;
+            color: #666;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏥 Clinic Dashboard</h1>
+            <p class="subtitle">AI-Powered Appointment Management</p>
+        </header>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalToday">-</div>
+                <div class="stat-label">Appointments Today</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pendingToday">-</div>
+                <div class="stat-label">Pending Today</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <label for="dateFilter">Date:</label>
+            <input type="date" id="dateFilter">
+            
+            <label for="statusFilter">Status:</label>
+            <select id="statusFilter">
+                <option value="">All</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            
+            <button class="btn btn-complete" onclick="loadAppointments()">🔄 Refresh</button>
+        </div>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Patient Name</th>
+                        <th>Phone</th>
+                        <th>Age</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Reason</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="appointmentsTable">
+                    <tr><td colspan="9" class="loading">Loading appointments...</td></tr>
+                </tbody>
+            </table>
+            <div class="refresh-info" id="lastRefresh"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh every 30 seconds
+        let refreshInterval;
+        
+        async function loadAppointments() {
+            try {
+                const dateFilter = document.getElementById('dateFilter').value;
+                const statusFilter = document.getElementById('statusFilter').value;
+                
+                let url = '/api/appointments?';
+                if (dateFilter) url += `date_filter=${dateFilter}&`;
+                if (statusFilter) url += `status=${statusFilter}&`;
+                
+                const response = await fetch(url);
+                const appointments = await response.json();
+                
+                const tbody = document.getElementById('appointmentsTable');
+                
+                if (appointments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="no-data">No appointments found</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = appointments.map(apt => `
+                    <tr>
+                        <td>${apt.id}</td>
+                        <td>${apt.patient_name}</td>
+                        <td>${apt.patient_phone}</td>
+                        <td>${apt.patient_age || '-'}</td>
+                        <td>${formatDate(apt.date)}</td>
+                        <td>${formatTime(apt.time)}</td>
+                        <td>${apt.reason || '-'}</td>
+                        <td><span class="status status-${apt.status}">${apt.status.toUpperCase()}</span></td>
+                        <td>
+                            ${apt.status !== 'completed' ? 
+                                `<button class="btn btn-complete" onclick="updateStatus(${apt.id}, 'completed')">✓ Complete</button>` : ''}
+                            ${apt.status !== 'cancelled' ? 
+                                `<button class="btn btn-cancel" onclick="updateStatus(${apt.id}, 'cancelled')">✗ Cancel</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+                
+                // Update last refresh time
+                document.getElementById('lastRefresh').textContent = 
+                    `Last updated: ${new Date().toLocaleTimeString()}`;
+                    
+            } catch (error) {
+                console.error('Error loading appointments:', error);
+                document.getElementById('appointmentsTable').innerHTML = 
+                    '<tr><td colspan="9" class="no-data">Error loading appointments</td></tr>';
+            }
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/appointments/today');
+                const stats = await response.json();
+                
+                document.getElementById('totalToday').textContent = stats.total_today;
+                document.getElementById('pendingToday').textContent = stats.pending_today;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        async function updateStatus(appointmentId, newStatus) {
+            try {
+                const response = await fetch(`/api/appointments/${appointmentId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                
+                if (response.ok) {
+                    // Reload appointments and stats
+                    await loadAppointments();
+                    await loadStats();
+                } else {
+                    alert('Failed to update appointment');
+                }
+            } catch (error) {
+                console.error('Error updating appointment:', error);
+                alert('Error updating appointment');
+            }
+        }
+        
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            return date.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+        
+        function formatTime(timeStr) {
+            const [hours, minutes] = timeStr.split(':');
+            const date = new Date();
+            date.setHours(parseInt(hours), parseInt(minutes));
+            return date.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        }
+        
+        // Event listeners
+        document.getElementById('dateFilter').addEventListener('change', loadAppointments);
+        document.getElementById('statusFilter').addEventListener('change', loadAppointments);
+        
+        // Initial load
+        loadAppointments();
+        loadStats();
+        
+        // Auto-refresh every 30 seconds
+        refreshInterval = setInterval(() => {
+            loadAppointments();
+            loadStats();
+        }, 30000);
+    </script>
+</body>
+</html>

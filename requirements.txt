@@ -1,0 +1,27 @@
+# Core dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Database
+sqlalchemy==2.0.25
+
+# AI and LLM
+langchain==0.1.4
+langchain-core==0.1.16
+langchain-google-genai==0.0.6
+langchain-groq==0.0.1
+google-generativeai==0.3.2
+
+# WhatsApp automation
+selenium==4.17.2
+webdriver-manager==4.0.1
+
+# Speech (optional)
+openai-whisper==20231117
+gtts==2.5.0
+
+# Utilities
+httpx==0.26.0
