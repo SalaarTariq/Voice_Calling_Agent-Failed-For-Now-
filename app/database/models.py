@@ -4,7 +4,7 @@ SQLAlchemy ORM models
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Date, Time
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Date, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -42,6 +42,11 @@ class Appointment(Base):
     status = Column(String(20), default="pending")  # pending, confirmed, completed, cancelled
     created_at = Column(DateTime, default=datetime.utcnow)
     reminder_sent = Column(DateTime, nullable=True)
+
+    # FIX: This constraint prevents Race Condition (double booking for the same slot)
+    __table_args__ = (
+        UniqueConstraint("date", "time", name="unique_appointment_slot"),
+    )
 
     # Relationships
     patient = relationship("Patient", back_populates="appointments")
