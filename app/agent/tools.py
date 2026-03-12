@@ -1,12 +1,17 @@
 """
 Agent tools for appointment management
-Clinic hours: configurable via env (default 10am-8pm, 30-min slots)
+FIXED: 
+1. Past dates booking validation
+2. Out-of-office hours validation
+3. Non-standard time slots (Bug №3 - slot granularity)
+4. Race Condition (Integrity check for concurrent bookings)
 """
 
 import os
 import logging
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time
 from typing import List
+from sqlalchemy.exc import IntegrityError
 from langchain_core.tools import tool
 
 from app.database.models import Patient, Appointment
@@ -39,12 +44,8 @@ def generate_time_slots() -> List[time]:
 def get_available_slots(appointment_date: str) -> str:
     """
     Get available appointment slots for a given date.
-
     Args:
         appointment_date: Date in YYYY-MM-DD format
-
-    Returns:
-        String listing available time slots, or an error message
     """
     try:
         target_date = datetime.strptime(appointment_date, "%Y-%m-%d").date()
@@ -75,57 +76,49 @@ def get_available_slots(appointment_date: str) -> str:
         return "Invalid date format. Please use YYYY-MM-DD (e.g., 2024-01-15)"
     except Exception as e:
         logger.error(f"Error getting available slots: {e}")
-        return "Sorry, error checking availability. Please try again."
+        return "Sorry, error checking availability."
 
 
 @tool
 def book_appointment(name: str, phone: str, age: int, appointment_date: str, appointment_time: str, reason: str) -> str:
     """
     Book an appointment for a patient. Call this once you have ALL required details.
-
-    Args:
-        name: Patient's full name
-        phone: Patient's phone number (e.g. 0300-1234567)
-        age: Patient's age in years
-        appointment_date: Date in YYYY-MM-DD format
-        appointment_time: Time in HH:MM format (24-hour, e.g. 14:00)
-        reason: Reason for visit / symptoms
-
-    Returns:
-        Confirmation message or error
     """
     try:
         target_date = datetime.strptime(appointment_date, "%Y-%m-%d").date()
         target_time = datetime.strptime(appointment_time, "%H:%M").time()
 
+        # --- FIX 1: Prevent booking in the past ---
+        if target_date < date.today():
+            return f"Error: Cannot book for a past date ({appointment_date})."
+
+        # --- FIX 2 & 3: Validate against clinic hours and slot granularity ---
+        valid_slots = generate_time_slots()
+        if target_time not in valid_slots:
+            # UX Improvement: Suggest using the availability tool
+            return (f"Error: {appointment_time} is not a valid slot. "
+                    f"Please use get_available_slots to see the standard {SLOT_DURATION_MINUTES}-minute "
+                    f"slots available between {CLINIC_START_HOUR}:00 and {CLINIC_END_HOUR}:00.")
+
         db = get_db_session()
         try:
-            # Find or create patient
+            # Handle patient record
             patient = db.query(Patient).filter(Patient.phone == phone).first()
             if not patient:
                 patient = Patient(name=name, phone=phone, age=age)
                 db.add(patient)
                 db.flush()
 
-            # Check slot availability
-            existing = db.query(Appointment).filter(
-                Appointment.date == target_date,
-                Appointment.time == target_time,
-                Appointment.status.in_(["pending", "confirmed"]),
-            ).first()
-
-            if existing:
-                return f"Sorry, {appointment_time} on {appointment_date} was just booked. Please choose another time."
-
-            # Book it
-            appointment = Appointment(
+            # --- FIX 4: Handle Race Condition via Atomic Database Commit ---
+            # REQUIRES: UniqueConstraint('date', 'time') in Appointment model
+            new_appointment = Appointment(
                 patient_id=patient.id,
                 date=target_date,
                 time=target_time,
                 reason=reason,
                 status="confirmed",
             )
-            db.add(appointment)
+            db.add(new_appointment)
             db.commit()
 
             friendly_time = target_time.strftime("%I:%M %p")
@@ -137,35 +130,31 @@ def book_appointment(name: str, phone: str, age: int, appointment_date: str, app
                 f"Date: {friendly_date}\n"
                 f"Time: {friendly_time}\n"
                 f"Phone: {phone}\n\n"
-                f"Please arrive 10 minutes early. "
-                f"You will receive a reminder before your appointment."
+                f"Please arrive 10 minutes early."
             )
+
+        except IntegrityError:
+            db.rollback()
+            return f"Conflict: The slot {appointment_time} on {appointment_date} was just taken. Please use get_available_slots to find another time."
         finally:
             db.close()
 
     except ValueError:
-        return "Invalid date or time format. Date: YYYY-MM-DD, Time: HH:MM"
+        return "Invalid date or time format. Date: YYYY-MM-DD, Time: HH:MM (24h format)"
     except Exception as e:
         logger.error(f"Error booking appointment: {e}")
-        return "Sorry, error while booking. Please try again or contact the clinic directly."
+        return "Sorry, internal error while booking. Please try again."
 
 
 @tool
 def get_patient_history(phone: str) -> str:
     """
     Look up a patient's previous appointments by phone number.
-
-    Args:
-        phone: Patient's phone number
-
-    Returns:
-        Patient history or 'not found' message
     """
     try:
         db = get_db_session()
         try:
             patient = db.query(Patient).filter(Patient.phone == phone).first()
-
             if not patient:
                 return "No previous records found for this phone number."
 
@@ -183,13 +172,11 @@ def get_patient_history(phone: str) -> str:
             lines = [f"Patient: {patient.name}, Age: {patient.age}", "\nRecent appointments:"]
             for apt in appointments:
                 lines.append(
-                    f"- {apt.date} at {apt.time.strftime('%I:%M %p')}: "
-                    f"{apt.reason} ({apt.status})"
+                    f"- {apt.date} at {apt.time.strftime('%I:%M %p')}: {apt.reason} ({apt.status})"
                 )
             return "\n".join(lines)
         finally:
             db.close()
-
     except Exception as e:
         logger.error(f"Error getting patient history: {e}")
         return "Unable to retrieve patient history at this time."
